@@ -4,26 +4,31 @@
 
 package frc.team670.robot;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import frc.team670.libs.logging.MustangNotifier;
-import frc.team670.robot.AutoPID.MechanismType;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 public class RobotContainer {
 
   private static List<TestMotor> motors = new ArrayList<>();
   private List<AutoPID> tuners = new ArrayList<>();
 
+  AutoPID tuner2;
+
   public RobotContainer() {
     AutoPID tuner = AutoPID.tuneTest(25);
-    tuner.start(0, 500, 42, MechanismType.LINEAR);
+    tuner.start(250);
     tuner.onFinish(this::handleFinish);
     tuners.add(tuner);
+    tuner2 = AutoPID.tuneTest(25);
+    tuner2.start(250);
+    tuner2.onFinish(this::handleFinish);
   }
 
   private void handleFinish(AutoPID tuner, int motorId) {
-    MustangNotifier.log(String.format("AutoTuner/MotorId%d"), tuner.getTunedValues());
+    MustangNotifier.log(String.format("AutoTuner/MotorId%d", motorId), tuner.getTunedValues());
+    System.out.println(Arrays.toString(tuner.getTunedValues()));
   }
 
   public static void add(TestMotor motor) {
@@ -37,6 +42,7 @@ public class RobotContainer {
     }
     for (AutoPID tuner : tuners) {
       if (tuner.isFinished()) {
+        tuner2.loop();
         continue;
       }
       tuner.loop();

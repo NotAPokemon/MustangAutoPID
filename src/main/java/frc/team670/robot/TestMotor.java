@@ -99,10 +99,12 @@ public class TestMotor extends MustangMotor<Integer> {
 
     double totalOutput = pidOutput + ffOutput;
 
-    // simple physics
-    double acceleration = totalOutput;
+    double mass = 1.0; // system inertia
+    double damping = 0.1; // friction/resistance
+    double acceleration = totalOutput / mass - damping * velocity;
+
     velocity += acceleration * dt;
-    position += velocity * dt;
+    position += velocity * dt + 0.1;
 
     lastVelocity = velocity;
   }
