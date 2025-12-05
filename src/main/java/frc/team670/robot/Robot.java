@@ -65,7 +65,6 @@ public class Robot extends LoggedRobot {
     // block in order for anything in the Command-based framework to work.
     CommandScheduler.getInstance().run();
     HealthChecker.periodic();
-    mRobotContainer.periodic();
   }
 
   /** This function is called once each time the robot enters Disabled mode. */
@@ -93,15 +92,13 @@ public class Robot extends LoggedRobot {
   public void autonomousPeriodic() {}
 
   @Override
-  public void teleopInit() {
-    if (mAutonomousCommand != null) {
-      mAutonomousCommand.cancel();
-    }
-  }
+  public void teleopInit() {}
 
   /** This function is called periodically during operator control. */
   @Override
-  public void teleopPeriodic() {}
+  public void teleopPeriodic() {
+    mRobotContainer.periodic();
+  }
 
   @Override
   public void testInit() {

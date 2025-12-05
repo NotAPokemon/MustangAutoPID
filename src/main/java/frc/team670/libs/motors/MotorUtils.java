@@ -4,6 +4,7 @@ import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.NeutralModeValue;
 import com.revrobotics.spark.SparkBase.PersistMode;
 import com.revrobotics.spark.SparkBase.ResetMode;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
@@ -117,6 +118,7 @@ public class MotorUtils {
     if (!status.isOK()) {
       MustangNotifier.error("Motor configuration failed: " + status + "\n Motor ID:" + motorID);
     }
+    motor.setNeutralMode(NeutralModeValue.Brake);
     motor.setPosition(0);
     return motor;
   }

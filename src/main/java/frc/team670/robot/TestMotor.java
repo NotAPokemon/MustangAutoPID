@@ -3,7 +3,6 @@ package frc.team670.robot;
 import frc.team670.libs.health.Health;
 import frc.team670.libs.motors.MustangMotor;
 
-@SuppressWarnings("unused")
 public class TestMotor extends MustangMotor<Integer> {
 
   private double position = 0.0;

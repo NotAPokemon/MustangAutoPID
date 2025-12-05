@@ -1,8 +1,12 @@
 package frc.team670.robot;
 
-import edu.wpi.first.math.filter.Debouncer;
+import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.configs.TalonFXConfiguration;
+import com.ctre.phoenix6.controls.MotionMagicVoltage;
+import com.ctre.phoenix6.hardware.TalonFX;
+import frc.team670.libs.logging.MustangNotifier;
+import frc.team670.libs.motors.MotorUtils;
 import frc.team670.libs.utils.QuadConsumer;
-import java.util.Arrays;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -72,6 +76,27 @@ public class AutoPID<MotorType> {
         (m, p, i, d) -> m.setPID(p, i, d));
   }
 
+  public static AutoPID<TalonFX> tuneTalonFX(int motorId, TalonFXConfiguration config) {
+    TalonFX motor = MotorUtils.createTalonFX(motorId, config);
+    return new AutoPID<TalonFX>(
+        motor,
+        (m, t) -> {
+          System.out.println(t);
+          m.setControl(new MotionMagicVoltage(0).withPosition(t));
+        },
+        (m) -> {
+          return m.getPosition().getValueAsDouble();
+        },
+        (m, p, i, d) -> {
+          Slot0Configs slot_config = new Slot0Configs();
+          m.getConfigurator().refresh(slot_config);
+          slot_config.kP = p;
+          slot_config.kI = i;
+          slot_config.kD = d;
+          m.getConfigurator().apply(slot_config);
+        });
+  }
+
   public void start(
       double initialTarget, double initalP, double pStep, double iStep, double dStep) {
     this.pStep = pStep;
@@ -97,14 +122,6 @@ public class AutoPID<MotorType> {
     minVal = 9e67;
     setTarget(startPosition);
 
-    System.out.println(
-        "Returning to "
-            + startPosition
-            + " CurrentPos: "
-            + getRotations()
-            + " PID: "
-            + Arrays.toString(tunedValues));
-
     then =
         () -> {
           setPID(tunedValues[0], tunedValues[1], tunedValues[2]);
@@ -115,10 +132,11 @@ public class AutoPID<MotorType> {
   private double maxVal = -9e67;
   private double minVal = 9e67;
   private double lastPosition = startPosition;
-  private Debouncer stabilityDebouncer = new Debouncer(0.6);
-  private double stabillitySlopeThreashold = 0.0001; // tune threshold
+  private MustangDebouncer stabilityDebouncer = new MustangDebouncer(2.5);
+  private double stabillitySlopeThreashold = 0.001; // tune threshold
   private double allowedIError = 0.05;
   private boolean stable = false;
+  private boolean increasing = false;
   private double prevDelta = 0;
   private boolean oscillating = false;
   private int oCount = 0;
@@ -128,13 +146,22 @@ public class AutoPID<MotorType> {
     if (currentPos > maxVal) {
       maxVal = currentPos;
     }
-    if (currentPos < minVal) {
+
+    increasing = currentPos > maxVal;
+
+    if (currentPos < minVal
+        && maxVal > currentPos
+        && !increasing
+        && currentPos > targetPosition * 0.55) {
       minVal = currentPos;
     }
 
+    MustangNotifier.log("AutoPID/max", maxVal);
+    MustangNotifier.log("AutoPID/min", minVal);
+
     double delta = currentPos - lastPosition;
 
-    // --- OSCILLATION DETECTION ---
+    // // --- OSCILLATION DETECTION ---
     boolean slopeFlip = (delta * prevDelta) < 0; // sign change
     boolean amplitudeLarge = lastPosition - currentPos > 0.5; // amplitude threshold
 
@@ -150,8 +177,9 @@ public class AutoPID<MotorType> {
     prevDelta = delta;
     lastPosition = currentPos;
 
+    MustangNotifier.log("AutoPID/oCount", oCount);
+
     if (oscillating) {
-      System.out.println("⚠ Motor oscillating, using unstable handler");
 
       unstable.run();
       oscillating = false;
@@ -162,16 +190,20 @@ public class AutoPID<MotorType> {
       return;
     }
 
+    MustangNotifier.log("AutoPID/stable", stable);
+
     if (stable) {
       tunningCommand.accept(currentPos);
       requestNextTest();
       stable = false;
       stabilityDebouncer.calculate(false);
+      MustangNotifier.log("AutoPID/waitingforStable", false);
     } else {
+      MustangNotifier.log("AutoPID/lastPos", lastPosition);
       stable =
           stabilityDebouncer.calculate(
               Math.abs(currentPos - lastPosition) < stabillitySlopeThreashold);
-      System.out.println("Waiting for stability... Current pos: " + currentPos + " Max: ");
+      MustangNotifier.log("AutoPID/waitingforStable", true);
     }
   }
 
@@ -180,20 +212,10 @@ public class AutoPID<MotorType> {
     double curveDistance = maxVal - minVal;
     boolean withinLowerThreashold = curveDistance > 0.20 * travelDistance;
     boolean withinUpperThreashold = curveDistance < 0.23 * travelDistance;
-    if (withinLowerThreashold && withinUpperThreashold) {
+    if (withinLowerThreashold && withinUpperThreashold || targetPosition - maxVal < 0.01) {
       System.out.println("P tuning complete. New P: " + tunedValues[0]);
       stage++;
     } else {
-      System.out.println(
-          "Tuning P... TravelDistance: "
-              + travelDistance
-              + " CurveDistance: "
-              + curveDistance
-              + " TargetRange: ["
-              + (0.20 * travelDistance)
-              + ", "
-              + (0.23 * travelDistance)
-              + "]");
       if (curveDistance < 0.20 * travelDistance) {
         tunedValues[0] += pStep;
       } else if (curveDistance > 0.23 * travelDistance) {
@@ -231,7 +253,11 @@ public class AutoPID<MotorType> {
   }
 
   public void loop() {
-    if (stage >= 3) return;
+    if (stage > 3) return;
+
+    MustangNotifier.log("AutoPID/currentPos", getRotations());
+    MustangNotifier.log("AutoPID/values", tunedValues);
+    MustangNotifier.log("AutoPID/stage", stage);
 
     if (!started) {
       setTarget(targetPosition);
@@ -244,10 +270,11 @@ public class AutoPID<MotorType> {
 
         then.run();
       } else {
-        // System.out.println(
-        // "Returning... Current pos: " + getRotations() + " Target: " + startPosition);
+        MustangNotifier.log("AutoPID/target", startPosition);
       }
       return;
+    } else {
+      MustangNotifier.log("AutoPID/target", targetPosition);
     }
 
     if (stage == 0) {
